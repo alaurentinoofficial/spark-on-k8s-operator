@@ -41,6 +41,7 @@ import (
 
 const bufferSize = 1024
 
+var DaemonMode bool
 var RootPath string
 var UploadToPath string
 var UploadToEndpoint string
@@ -90,6 +91,8 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
+	createCmd.Flags().BoolVarP(&DaemonMode, "daemon", "d", false,
+		"run as a daemon in background")
 	createCmd.Flags().StringVarP(&UploadToPath, "upload-to", "u", "",
 		"the name of the bucket where local application dependencies are to be uploaded")
 	createCmd.Flags().StringVarP(&RootPath, "upload-prefix", "p", "",
@@ -176,6 +179,11 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 	}
 
 	fmt.Printf("SparkApplication \"%s\" created\n", app.Name)
+
+	if !DaemonMode {
+		fmt.Println("Waiting for logs\n---")
+		doLog(app.Name, true, kubeClient, crdClient, LOG_TIMEOUT)
+	}
 
 	return nil
 }
