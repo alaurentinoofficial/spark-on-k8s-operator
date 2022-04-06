@@ -17,8 +17,12 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"time"
 
+	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis/sparkoperator.k8s.io/v1beta2"
+	crdclientset "github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/duration"
 )
@@ -36,4 +40,47 @@ func formatNotAvailable(info string) string {
 		return "N.A."
 	}
 	return info
+}
+
+func waitSparkApplicationEnds(
+	sparkApplicationName string,
+	crdClient crdclientset.Interface,
+	timeout time.Duration) error {
+
+	running := make(chan interface{})
+	done := make(chan interface{})
+	go func() {
+		for {
+			app, _ := crdClient.SparkoperatorV1beta2().SparkApplications(Namespace).Get(
+				context.TODO(),
+				sparkApplicationName,
+				metav1.GetOptions{})
+
+			if app != nil {
+				actual := app.Status.AppState.State
+
+				if actual == v1beta2.RunningState {
+					running <- nil
+				}
+
+				if actual == v1beta2.CompletedState {
+					done <- nil
+					return
+				} else {
+					time.Sleep(200 * time.Millisecond)
+				}
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			return nil
+		case <-running:
+			continue
+		case <-time.After(timeout):
+			return fmt.Errorf("timeout: SparkApplication not started")
+		}
+	}
 }

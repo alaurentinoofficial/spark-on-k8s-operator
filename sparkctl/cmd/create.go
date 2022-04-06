@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/go-cloud/blob"
@@ -41,6 +42,7 @@ import (
 
 const bufferSize = 1024
 
+var RemoveAfterComplete bool
 var DaemonMode bool
 var RootPath string
 var UploadToPath string
@@ -91,6 +93,8 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
+	createCmd.Flags().BoolVar(&RemoveAfterComplete, "rm", false,
+		"remove SparkApplication after complete")
 	createCmd.Flags().BoolVarP(&DaemonMode, "daemon", "d", false,
 		"run as a daemon in background")
 	createCmd.Flags().StringVarP(&UploadToPath, "upload-to", "u", "",
@@ -183,6 +187,19 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 	if !DaemonMode {
 		fmt.Println("Waiting for logs\n---")
 		doLog(app.Name, true, kubeClient, crdClient, LOG_TIMEOUT)
+		fmt.Println("---")
+	}
+
+	if RemoveAfterComplete {
+		if err := waitSparkApplicationEnds(app.Name, crdClient, 30*time.Second); err != nil {
+			fmt.Println(err)
+			return nil
+		}
+
+		if err := doDelete(app.Name, crdClient); err != nil {
+			fmt.Println(err)
+			return nil
+		}
 	}
 
 	return nil
